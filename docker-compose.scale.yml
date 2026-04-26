@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  gateway:
+    build: ./gateway
+    deploy:
+      replicas: 3
+    environment:
+      - REDIS_HOST=redis
+      - RABBITMQ_HOST=rabbitmq
+    networks:
+      - chatbot-network
+
+  nlu-service:
+    build: ./nlu-service
+    deploy:
+      replicas: 2
+    environment:
+      - REDIS_HOST=redis
+    networks:
+      - chatbot-network
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      - chatbot-network
+
+networks:
+  chatbot-network:
+    driver: overlay

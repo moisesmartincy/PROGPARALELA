@@ -1,0 +1,244 @@
+# parallel-chatbot-distribuido/docker-compose.yml
+version: '3.8'
+
+services:
+  # ======================================
+  # LOAD BALANCER
+  # ======================================
+  load-balancer:
+    build: ./load_balancer
+    ports:
+      - "80:80"
+    depends_on:
+      - gateway-1
+      - gateway-2
+    networks:
+      - chatbot-network
+
+  # ======================================
+  # API GATEWAYS (2 instancias)
+  # ======================================
+  gateway-1:
+    build: ./gateway
+    container_name: gateway-1
+    environment:
+      - INSTANCE_ID=1
+      - REDIS_HOST=redis
+      - RABBITMQ_HOST=rabbitmq
+      - NLU_SERVICE_URL=http://nlu-service:8001
+      - RESPONSE_SERVICE_URL=http://response-service:8002
+      - LOGGING_SERVICE_URL=http://logging-service:8003
+    ports:
+      - "8000:8000"
+    networks:
+      - chatbot-network
+
+  gateway-2:
+    build: ./gateway
+    container_name: gateway-2
+    environment:
+      - INSTANCE_ID=2
+      - REDIS_HOST=redis
+      - RABBITMQ_HOST=rabbitmq
+      - NLU_SERVICE_URL=http://nlu-service:8001
+      - RESPONSE_SERVICE_URL=http://response-service:8002
+      - LOGGING_SERVICE_URL=http://logging-service:8003
+    ports:
+      - "8005:8000"
+    networks:
+      - chatbot-network
+
+  # ======================================
+  # NLU SERVICE
+  # ======================================
+  nlu-service:
+    build: ./nlu-service
+    container_name: nlu-service
+    ports:
+      - "8001:8001"
+    environment:
+      - REDIS_HOST=redis
+      - WORKER_PROCESSES=4
+      - THREAD_POOL_SIZE=10
+    volumes:
+      - ./nlu-service:/app
+    networks:
+      - chatbot-network
+
+  # ======================================
+  # RESPONSE SERVICE
+  # ======================================
+  response-service:
+    build: ./response-service
+    container_name: response-service
+    ports:
+      - "8002:8002"
+    environment:
+      - REDIS_HOST=redis
+      - NLU_SERVICE_URL=http://nlu-service:8001
+    networks:
+      - chatbot-network
+
+  # ======================================
+  # LOGGING SERVICE
+  # ======================================
+  logging-service:
+    build: ./logging-service
+    container_name: logging-service
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - chatbot-network
+
+  # ======================================
+  # TASK MANAGER
+  # ======================================
+  task-manager:
+    build: ./task-manager
+    container_name: task-manager
+    ports:
+      - "8004:8004"
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - REDIS_HOST=redis
+    depends_on:
+      - rabbitmq
+    networks:
+      - chatbot-network
+
+  # ======================================
+  # FRONTEND
+  # ======================================
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    ports:
+      - "8080:8080"
+    environment:
+      - LOAD_BALANCER_URL=http://load-balancer
+    networks:
+      - chatbot-network
+
+  # ======================================
+  # REDIS (Cache)
+  # ======================================
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb
+    volumes:
+      - redis-data:/data
+    networks:
+      - chatbot-network
+
+  # ======================================
+  # RABBITMQ (Message Queue)
+  # ======================================
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin      # USUARIO
+      - RABBITMQ_DEFAULT_PASS=password   # CONTRASEÑA
+      - RABBITMQ_DEFAULT_VHOST=/
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - chatbot-network
+
+  # ======================================
+  # PROMETHEUS (Monitoreo)
+  # ======================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - chatbot-network
+
+  # ======================================
+  # GRAFANA (Dashboards)
+  # ======================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana-dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana-datasources:/etc/grafana/provisioning/datasources
+    restart: unless-stopped
+    networks:
+      - chatbot-network
+
+  # ======================================
+  # NODE EXPORTER (Métricas del sistema)
+  # ======================================
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    ports:
+      - "9100:9100"
+    restart: unless-stopped
+    networks:
+      - chatbot-network
+
+  # ======================================
+  # REDIS EXPORTER
+  # ======================================
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: redis-exporter
+    ports:
+      - "9121:9121"
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    restart: unless-stopped
+    networks:
+      - chatbot-network
+
+  # ======================================
+  # RABBITMQ EXPORTER
+  # ======================================
+  rabbitmq-exporter:
+    image: kbudde/rabbitmq-exporter:latest
+    container_name: rabbitmq-exporter
+    ports:
+      - "9419:9419"
+    environment:
+      - RABBIT_URL=http://rabbitmq:15672
+      - RABBIT_USER=admin      # Mismo que RabbitMQ
+      - RABBIT_PASSWORD=password  # Mismo que RabbitMQ
+    restart: unless-stopped
+    networks:
+      - chatbot-network
+
+networks:
+  chatbot-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  rabbitmq-data:
+  prometheus-data:
+  grafana-data:

@@ -1,0 +1,102 @@
+# parallel-chatbot-distribuido/monitoring/prometheus.yml
+
+global:
+  scrape_interval: 15s      # Cada cuánto recolectar métricas
+  evaluation_interval: 15s  # Cada cuánto evaluar reglas
+  scrape_timeout: 10s       # Timeout para scrape
+
+# Reglas de alerta (opcional)
+rule_files:
+  # - "alert.rules"
+
+# Configuración de scraping
+scrape_configs:
+  # ======================================
+  # PROMETHEUS MISMO
+  # ======================================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    metrics_path: /metrics
+
+  # ======================================
+  # GATEWAYS (Load Balancing)
+  # ======================================
+  - job_name: 'gateway'
+    static_configs:
+      - targets:
+        - 'gateway-1:8000'  # Gateway 1
+        - 'gateway-2:8000'  # Gateway 2
+    metrics_path: /metrics
+    scrape_interval: 10s
+    honor_labels: true
+
+  # ======================================
+  # NLU SERVICE
+  # ======================================
+  - job_name: 'nlu-service'
+    static_configs:
+      - targets: ['nlu-service:8001']
+    metrics_path: /metrics
+    params:
+      format: ['prometheus']
+
+  # ======================================
+  # RESPONSE SERVICE
+  # ======================================
+  - job_name: 'response-service'
+    static_configs:
+      - targets: ['response-service:8002']
+    metrics_path: /metrics
+
+  # ======================================
+  # LOGGING SERVICE
+  # ======================================
+  - job_name: 'logging-service'
+    static_configs:
+      - targets: ['logging-service:8003']
+    metrics_path: /metrics
+
+  # ======================================
+  # TASK MANAGER
+  # ======================================
+  - job_name: 'task-manager'
+    static_configs:
+      - targets: ['task-manager:8004']
+    metrics_path: /metrics
+
+  # ======================================
+  # NODE EXPORTER (Métricas del Sistema)
+  # ======================================
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 5s
+
+  # ======================================
+  # REDIS EXPORTER
+  # ======================================
+  - job_name: 'redis-exporter'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 10s
+
+  # ======================================
+  # RABBITMQ EXPORTER
+  # ======================================
+  - job_name: 'rabbitmq-exporter'
+    static_configs:
+      - targets: ['rabbitmq-exporter:9419']
+    scrape_interval: 15s
+
+# Almacenamiento
+storage:
+  tsdb:
+    path: /prometheus
+    retention: 15d
+
+# Configuración de alertas
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []

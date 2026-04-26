@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chatbot Distribuido - Paralelismo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .chat-container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .chat-header {
+            background: #4a5568;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .chat-messages {
+            height: 400px;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: flex-start;
+        }
+        .message.user {
+            justify-content: flex-end;
+        }
+        .message.bot {
+            justify-content: flex-start;
+        }
+        .message-bubble {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+        }
+        .user .message-bubble {
+            background: #4299e1;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+        .bot .message-bubble {
+            background: #e2e8f0;
+            color: #2d3748;
+            border-bottom-left-radius: 4px;
+        }
+        .message-info {
+            font-size: 12px;
+            color: #718096;
+            margin-top: 4px;
+        }
+        .chat-input {
+            padding: 20px;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            gap: 10px;
+        }
+        .chat-input input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        .chat-input button {
+            background: #4299e1;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .chat-input button:hover {
+            background: #3182ce;
+        }
+        .demo-section {
+            background: white;
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            background: #48bb78;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #38a169;
+        }
+        .parallel-viz {
+            display: flex;
+            height: 60px;
+            margin: 10px 0;
+            gap: 5px;
+        }
+        .worker {
+            flex: 1;
+            background: #e2e8f0;
+            border-radius: 4px;
+            transition: background 0.3s;
+        }
+        .worker.active {
+            background: #68d391;
+        }
+        .worker.busy {
+            background: #fc8181;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>🤖 Chatbot Distribuido con Microservicios</h1>
+            <p>Demostración de Programación Paralela y Distribuida</p>
+        </div>
+        
+        <div class="chat-messages" id="chatMessages">
+            <div class="message bot">
+                <div class="message-bubble">
+                    ¡Hola! Soy un chatbot distribuido construido con microservicios:<br><br>
+                    <strong>Arquitectura:</strong><br>
+                    • Load Balancer (2 gateways)<br>
+                    • NLU Service (4 procesos paralelos)<br>
+                    • Response Service<br>
+                    • Logging Service (async)<br>
+                    • Task Manager (RabbitMQ)<br>
+                    • Redis Cache distribuido<br><br>
+                    ¡Pregúntame lo que quieras! 😊
+                </div>
+            </div>
+        </div>
+        
+        <div class="chat-input">
+            <input type="text" id="messageInput" placeholder="Escribe tu mensaje aquí..." autocomplete="off">
+            <button onclick="sendMessage()">Enviar</button>
+        </div>
+    </div>
+    
+    <div class="demo-section">
+        <h3>🎯 Demo de Paralelismo</h3>
+        <button onclick="testSequential()">Probar Secuencial (5 mensajes)</button>
+        <button onclick="testParallel()">Probar Paralelo (5 mensajes)</button>
+        
+        <div class="parallel-viz" id="workersViz"></div>
+        
+        <div id="demoResult" style="margin-top: 10px; padding: 10px; background: #f7fafc; border-radius: 5px;">
+            Resultados aparecerán aquí...
+        </div>
+    </div>
+    
+    <div class="demo-section">
+        <h3>📊 Sistema de Microservicios</h3>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+            <div style="padding: 10px; background: #ebf8ff; border-radius: 5px;">
+                <strong>Gateway 1</strong><br>
+                <span id="gateway1">Checking...</span>
+            </div>
+            <div style="padding: 10px; background: #f0fff4; border-radius: 5px;">
+                <strong>NLU Service</strong><br>
+                <span id="nlu">Checking...</span>
+            </div>
+            <div style="padding: 10px; background: #fff5f5; border-radius: 5px;">
+                <strong>Response Service</strong><br>
+                <span id="response">Checking...</span>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Inicializar visualización de workers
+        function initWorkersViz(count=5) {
+            const viz = document.getElementById('workersViz');
+            viz.innerHTML = '';
+            for(let i = 0; i < count; i++) {
+                const worker = document.createElement('div');
+                worker.className = 'worker';
+                worker.id = 'worker-' + i;
+                viz.appendChild(worker);
+            }
+        }
+        
+        function updateWorkerViz(workerId, state) {
+            const worker = document.getElementById('worker-' + workerId);
+            if(worker) {
+                worker.className = 'worker ' + state;
+            }
+        }
+        
+        // Funciones de chat
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            // Agregar mensaje del usuario
+            addMessage(message, 'user');
+            input.value = '';
+            
+            // Enviar al backend
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: message})
+                });
+                
+                const data = await response.json();
+                
+                // Agregar respuesta del bot
+                addMessage(data.response, 'bot', {
+                    intent: data.intent,
+                    confidence: data.confidence,
+                    responseTime: data.response_time_ms,
+                    instance: data.instance
+                });
+                
+            } catch (error) {
+                addMessage('Error de conexión. Intenta nuevamente.', 'bot');
+            }
+        }
+        
+        function addMessage(text, sender, metadata = {}) {
+            const messagesDiv = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            
+            const bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+            bubble.textContent = text;
+            
+            messageDiv.appendChild(bubble);
+            
+            if (metadata.intent) {
+                const info = document.createElement('div');
+                info.className = 'message-info';
+                info.textContent = `Intención: ${metadata.intent} | Confianza: ${(metadata.confidence * 100).toFixed(1)}% | Tiempo: ${metadata.responseTime?.toFixed(0) || 0}ms | Instancia: ${metadata.instance || 'N/A'}`;
+                messageDiv.appendChild(info);
+            }
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        // Pruebas de paralelismo
+        async function testSequential() {
+            initWorkersViz(5);
+            const start = performance.now();
+            
+            for(let i = 0; i < 5; i++) {
+                updateWorkerViz(i, 'busy');
+                await fetch('/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: 'Test secuencial ' + i})
+                });
+                updateWorkerViz(i, 'active');
+                await new Promise(r => setTimeout(r, 200));
+                updateWorkerViz(i, '');
+            }
+            
+            const time = performance.now() - start;
+            document.getElementById('demoResult').innerHTML = 
+                `<strong>Secuencial:</strong> ${time.toFixed(0)}ms para 5 mensajes<br>
+                 Throughput: ${(5000/time).toFixed(2)} mensajes/segundo`;
+        }
+        
+        async function testParallel() {
+            initWorkersViz(5);
+            const start = performance.now();
+            
+            // Activar todos los workers
+            for(let i = 0; i < 5; i++) {
+                updateWorkerViz(i, 'busy');
+            }
+            
+            // Enviar todas las peticiones en paralelo
+            const promises = [];
+            for(let i = 0; i < 5; i++) {
+                promises.push(
+                    fetch('/chat', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({message: 'Test paralelo ' + i})
+                    })
+                );
+            }
+            
+            await Promise.all(promises);
+            
+            for(let i = 0; i < 5; i++) {
+                updateWorkerViz(i, 'active');
+            }
+            
+            const time = performance.now() - start;
+            document.getElementById('demoResult').innerHTML = 
+                `<strong>Paralelo:</strong> ${time.toFixed(0)}ms para 5 mensajes<br>
+                 Speedup: ${(2500/time).toFixed(2)}x (estimado)<br>
+                 Throughput: ${(5000/time).toFixed(2)} mensajes/segundo`;
+        }
+        
+        // Verificar estado de servicios
+        async function checkServices() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                
+                document.getElementById('gateway1').textContent = 
+                    data.load_balancer === 'healthy' ? '✅ Healthy' : '❌ Unhealthy';
+                
+                // Verificar servicios individuales
+                checkService('http://localhost:8001/health', 'nlu');
+                checkService('http://localhost:8002/health', 'response');
+                
+            } catch (error) {
+                document.getElementById('gateway1').textContent = '❌ Unreachable';
+            }
+        }
+        
+        async function checkService(url, elementId) {
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                document.getElementById(elementId).textContent = 
+                    data.status === 'healthy' ? '✅ Healthy' : '❌ ' + data.status;
+            } catch {
+                document.getElementById(elementId).textContent = '❌ Unreachable';
+            }
+        }
+        
+        // Inicializar
+        initWorkersViz(5);
+        checkServices();
+        setInterval(checkServices, 10000);
+        
+        // Permitir Enter para enviar
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>

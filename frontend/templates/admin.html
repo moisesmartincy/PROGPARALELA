@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Panel - Chatbot Distribuido</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .service-card { 
+            background: white; 
+            padding: 20px; 
+            margin: 10px 0; 
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status-healthy { color: #48bb78; }
+        .status-unhealthy { color: #f56565; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Admin Panel - Chatbot Distribuido</h1>
+        
+        <div class="service-card">
+            <h3>🚪 Gateway Services</h3>
+            <div id="gateways"></div>
+        </div>
+        
+        <div class="service-card">
+            <h3>🧠 NLU Service</h3>
+            <div id="nlu"></div>
+        </div>
+        
+        <div class="service-card">
+            <h3>💬 Response Service</h3>
+            <div id="response"></div>
+        </div>
+        
+        <div class="service-card">
+            <h3>📝 Logging Service</h3>
+            <div id="logging"></div>
+        </div>
+        
+        <div class="service-card">
+            <h3>⚙️ Task Manager</h3>
+            <div id="taskmanager"></div>
+        </div>
+    </div>
+    
+    <script>
+        async function loadServiceStatus() {
+            const services = [
+                {name: 'gateways', url: 'http://localhost:8000/health'},
+                {name: 'nlu', url: 'http://localhost:8001/health'},
+                {name: 'response', url: 'http://localhost:8002/health'},
+                {name: 'logging', url: 'http://localhost:8003/health'},
+                {name: 'taskmanager', url: 'http://localhost:8004/health'}
+            ];
+            
+            for(const service of services) {
+                try {
+                    const response = await fetch(service.url);
+                    const data = await response.json();
+                    
+                    let html = `<div class="status-healthy">✅ Healthy</div>`;
+                    if(data.status !== 'healthy') {
+                        html = `<div class="status-unhealthy">❌ ${data.status || 'Unhealthy'}</div>`;
+                    }
+                    
+                    document.getElementById(service.name).innerHTML = html;
+                } catch {
+                    document.getElementById(service.name).innerHTML = 
+                        `<div class="status-unhealthy">❌ Unreachable</div>`;
+                }
+            }
+        }
+        
+        // Cargar estado cada 5 segundos
+        loadServiceStatus();
+        setInterval(loadServiceStatus, 5000);
+    </script>
+</body>
+</html>
